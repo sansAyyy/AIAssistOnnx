@@ -49,21 +49,6 @@ LRESULT CALLBACK MouseHookProcedure(int nCode, WPARAM wParam, LPARAM lParam)
         else if (wParam == WM_RBUTTONUP) {
         }
         else if (wParam == WM_MBUTTONDOWN) {
-            //使用鼠标中键关闭自动追踪、开火、压枪
-            if (AssistWorker::m_AssistConfig->autoTrace || AssistWorker::m_AssistConfig->autoFire || AssistWorker::m_AssistConfig->autoPush) {              
-
-                AssistWorker::m_AssistConfig->autoTrace = false;
-                AssistWorker::m_AssistConfig->autoFire = false;
-                AssistWorker::m_AssistConfig->autoPush = false;
-
-            }
-            else {
-                //恢复用户设置的值
-                AssistWorker::m_AssistConfig->autoTrace = AssistWorker::m_AssistConfig->autoTraceUserSet;
-                AssistWorker::m_AssistConfig->autoFire = AssistWorker::m_AssistConfig->autoFireUserSet;
-                AssistWorker::m_AssistConfig->autoPush = AssistWorker::m_AssistConfig->autoPushUserSet;
-
-            }
         }
         else if (wParam == WM_MBUTTONUP) {
         }
@@ -113,7 +98,7 @@ LRESULT CALLBACK KeyboardHookProcedure(int nCode, WPARAM wParam, LPARAM lParam)
                     break;
 
                 case 0x56:
-                    //使用v键关闭自动追踪、开火、压枪
+                    //使用v键关闭/开启自动追踪、开火、压枪
                     if (AssistWorker::m_AssistConfig->autoTrace || AssistWorker::m_AssistConfig->autoFire || AssistWorker::m_AssistConfig->autoPush) {
                         AssistWorker::m_AssistConfig->autoTrace = false;
                         AssistWorker::m_AssistConfig->autoFire = false;
@@ -127,6 +112,17 @@ LRESULT CALLBACK KeyboardHookProcedure(int nCode, WPARAM wParam, LPARAM lParam)
 
                     }
                     break;
+
+                case VK_RETURN:
+                    //使用enter键关闭自动追踪、开火、压枪
+                    if (AssistWorker::m_AssistConfig->autoTrace || AssistWorker::m_AssistConfig->autoFire || AssistWorker::m_AssistConfig->autoPush) {
+
+                        AssistWorker::m_AssistConfig->autoTrace = false;
+                        AssistWorker::m_AssistConfig->autoFire = false;
+                        AssistWorker::m_AssistConfig->autoPush = false;
+
+                    }
+                   
             }
         }
     }
@@ -289,6 +285,12 @@ void AssistWorker::DetectWork()
             finish = clock();
             duration = (double)(finish - start) * 1000 / CLOCKS_PER_SEC;
 
+            //记录图像检测次数
+            AssistWorker::m_AssistConfig->detectCount += 1;
+            if (AssistWorker::m_AssistConfig->detectCount >= INT_MAX) {
+                AssistWorker::m_AssistConfig->detectCount = 0;
+            }
+
             if (detectResult.classIds.size() > 0) {
                 //有检查到人类，结果放到队列中,并通知处理线程消费检测结果
                 //如果把开枪和鼠标移动操作放在不同线程，会导致操作割裂，这两个操作先放回同一个线程处理
@@ -341,7 +343,7 @@ void AssistWorker::FireWork()
                 //先检查是否设置了自动开枪标志
                 if (m_AssistConfig->autoFire && !AssistWorker::m_startFire) {
                     //在检查是否已经瞄准了
-                    bool isInTarget = mouseKeyboard->IsInTarget(detectResult);
+                    bool isInTarget = mouseKeyboard->IsInTarget(detectResult, m_weaponInfo);
                     //如果已经瞄准，执行自动开枪操作
                     if (isInTarget) {
                         //开枪和鼠标移动操作放在不同线程，导致操作割裂，先放回同一个线程处理
@@ -381,14 +383,23 @@ void AssistWorker::MoveWork()
                 //增加条件，只有使用背包1和2(使用步枪和狙击枪的时候)，才进行追踪，使用其他背包不追踪
                 if (m_AssistConfig->autoTrace && (m_weaponInfo.bag==1 || m_weaponInfo.bag == 2)) {
                     //在检查是否已经瞄准了
-                    bool isInTarget = mouseKeyboard->IsInTarget(detectResult);
+                    bool isInTarget = mouseKeyboard->IsInTarget(detectResult, m_weaponInfo);
                     //没有瞄准的情况下，才执行鼠标追踪操作
                     if (isInTarget) {
                         //开枪和鼠标移动操作放在不同线程，导致操作割裂，先放回同一个线程处理
                         //增加一个条件，没有人工按下鼠标左键的情况下，才执行自动开枪
                         if (m_AssistConfig->autoFire && !AssistWorker::m_startFire) {
 
-                            mouseKeyboard->AutoFire(detectResult);
+                            mouseKeyboard->AutoFire(detectResult, m_weaponInfo);
+
+                            //自动开火后自动压枪，用图像检测次数计算间隔时间
+                            if (m_AssistConfig->autoPush) {
+                                //大概100ms一枪，检测一次20ms，所以大致是检测5次左右压一次枪？
+                                if ((m_AssistConfig->detectCount - m_AssistConfig->preDetectCount) % 5 == 0) {
+                                    m_AssistConfig->preDetectCount = m_AssistConfig->detectCount;
+                                    mouseKeyboard->AutoPushAfterFire(m_weaponInfo);
+                                }
+                            }
 
                             //由于没有严格的并发控制，自动开火和手动开火有时会冲突
                             //自动开火后做一个补偿，如果检测到手动开火标志，则把鼠标左键再下压
@@ -398,7 +409,7 @@ void AssistWorker::MoveWork()
                         }
                     }
                     else {
-                        mouseKeyboard->AutoMove(detectResult);
+                        mouseKeyboard->AutoMove(detectResult, m_weaponInfo);
                     }
                 }
             }

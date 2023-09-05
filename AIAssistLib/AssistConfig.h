@@ -43,7 +43,7 @@ public:
     //注意绝地求生窗口标题是带一个空格的，有点坑
     int gameLength = 5; //设置配置数组长度,C++没有获取数组长度的函数，用笨办法直接配置一个值
     string gameNames[5] = { "SUPER PEOPLE  ", "绝地求生 ", "逆战", "穿越火线", "其他游戏"};
-    int maxModelWidths[5] = { 230, 150, 200, 200, 200 };
+    int maxModelWidths[5] = { 300, 300, 260, 260, 260 };
     int playerCentXs[5] = { screenRect.width / 2 - detectRect.x, screenRect.width * 860 / 1920 - detectRect.x, 
         screenRect.width / 2 - detectRect.x, screenRect.width / 2 - detectRect.x, screenRect.width / 2 - detectRect.x };
     //压枪配置数据，包括背包1和背包2的压枪数据
@@ -59,7 +59,7 @@ public:
     //是否启用图像检测
     bool detectImg = true;
     //用户配置的实际检测宽度和高度
-    int detectWidth = 460, detectHeight = 300;
+    int detectWidth = 480, detectHeight = 320;
     //游戏进程占用的原始屏幕区域
     cv::Rect screenRect = {0,0,GetSystemMetrics(SM_CXSCREEN),GetSystemMetrics(SM_CYSCREEN) };
     //裁剪后的实际图像检查区域
@@ -69,11 +69,16 @@ public:
     //计算屏幕缩放后的，裁剪后的实际图像检查区域
     cv::Rect detectZoomRect = { 0,0,detectWidth,detectHeight };
 
+    //图像检测次数，用于某些场景下（如自动开火时实现自动压枪）的时间计算（每次检测约20ms）
+    long detectCount = 0;
+    //上次自动开火时的检测次数
+    long preDetectCount = 0;
+
 
     //是否自动追踪
     bool autoTrace = false;
     //自动追踪类型，1是持续追踪、2是鼠标右键瞄准触发追踪
-    double mouseMoveSlow = 0.6; //数据移动太快，用一个参数，要控制移动速度变慢,值要设置为小于1
+    double mouseMoveSlow = 1.6; //控制鼠标移动速度，值可以小于1
     int autoTraceType = 1;
     int autoTraceTimeOut = 0; //鼠标右键瞄准触发追踪倒计时，缺省按30秒设置
 
